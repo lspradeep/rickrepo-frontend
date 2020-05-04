@@ -104,7 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
         userDetailsBody = json.decode(userDetailsResponse.body);
         _getUserFutureTweets();
       });
-    }else {
+    } else {
       _errorToast("Error getting user details");
     }
   }
@@ -132,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       });
       print("getUserTweets tweeets ${tweets.length}");
-    }else if(userTweetsResponse.statusCode == 201){
+    } else if (userTweetsResponse.statusCode == 201) {
       //empty tweets
     } else {
       _errorToast("Error getting user tweets");
@@ -140,6 +140,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   _postTweet() async {
+    setState(() {
+      _showLoading = true;
+    });
     var response = await http.post(
       '$BASE_URL/schedule-tweet',
       headers: <String, String>{
@@ -296,6 +299,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
     //Api calls
     _getUserDetails();
+  }
+
+  _validatePostMessage() async{
+    if (_charCount == 0) {
+      _errorToast("Tweet message can't be empty.");
+      return false;
+    }
+    if (_charCount > 280) {
+      _errorToast("Tweet message can't be empty.");
+      return false;
+    }
+
+    return true;
+  }
+
+  @override
+  void dispose() {
+    _textFieldController.dispose();
+    super.dispose();
   }
 
   @override
@@ -460,26 +482,32 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.all(16.0),
                           child: Column(children: [
                             Container(
-                                height: 150,
-                                child: TextFormField(
-                                  controller: _textFieldController,
-                                  onChanged: _onChanged,
-                                  keyboardType: TextInputType.multiline,
-                                  maxLines: 5,
-                                  decoration: new InputDecoration(
-                                    counter:
-                                        Text("${_charCount.toString()}/280"),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                        vertical: 10.0, horizontal: 10),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                          color: Colors.blue, width: 1.0),
+                                height: 160,
+                                child: Expanded(
+                                  child: TextFormField(
+                                    controller: _textFieldController,
+                                    onChanged: _onChanged,
+                                    keyboardType: TextInputType.multiline,
+                                    maxLines: 5,
+                                    decoration: new InputDecoration(
+                                      counter:
+                                          Text("${_charCount.toString()}/280"),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              vertical: 10.0, horizontal: 10),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                            color: Colors.blue, width: 1.0),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                            color: Colors.blue, width: 1.0),
+                                      ),
+                                      hintText: 'Your Tweet Message!',
+                                      errorText: (_charCount > 280)
+                                          ? "Tweet Message cannot contain \n more than 280 characters."
+                                          : null,
                                     ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                          color: Colors.blue, width: 1.0),
-                                    ),
-                                    hintText: 'Your Tweet Message!',
                                   ),
                                 )),
                             SizedBox(height: 20),
@@ -537,21 +565,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 : RaisedButton(
                                     color: Colors.blue,
                                     onPressed: () {
-                                      _errorToast(
-                                            "Can't post more than 280 characters.");
-                                      if (_charCount > 280) {
-                                        _errorToast(
-                                            "Can't post more than 280 characters.");
-                                         return;
-                                      } else if (_charCount <= 0) {
-                                        _errorToast(
-                                            "Tweet message can't be empty.");
-                                         return;
+                                      if (_validatePostMessage()) {
+                                        _postTweet();
                                       }
-                                      setState(() {
-                                        _showLoading = true;
-                                      });
-                                      // _postTweet();
                                     },
                                     child: Text(
                                       "Schedule Tweet",
