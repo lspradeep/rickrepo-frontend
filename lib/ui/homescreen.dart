@@ -301,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _getUserDetails();
   }
 
-  _validatePostMessage() async{
+  _validatePostMessage() {
     if (_charCount == 0) {
       _errorToast("Tweet message can't be empty.");
       return false;
@@ -363,8 +363,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                       ? NetworkImage(
                                                           "https://p.kindpng.com/picc/s/220-2201160_line-clipart-computer-icons-social-media-facebook-small.png")
                                                       : new NetworkImage(
-                                                          userDetailsBody[
-                                                              "profile_image_url"])))),
+                                                          userDetailsBody["profile_image_url"])))),
                                       SizedBox(
                                         width: 20,
                                       ),
