@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:responsive_builder/responsive_builder.dart';
 import 'package:rick_sanchez_bot/ui/homescreen.dart';
 import 'package:rick_sanchez_bot/utils/AppConstants.dart';
@@ -11,8 +11,11 @@ import 'package:url_launcher/url_launcher.dart';
 void main() {
   // Set default home.
   Widget _defaultHome = new LoginScreen();
+  // Widget _defaultHome = new HomeScreen();
   if ((window.localStorage.containsKey("token") &&
           window.localStorage.containsKey("tokenSecret")) &&
+      (window.localStorage['token'] != null &&
+          window.localStorage['tokenSecret'] != null) &&
       (window.localStorage['token'].length > 5 &&
           window.localStorage['tokenSecret'].length > 5)) {
     print(
@@ -43,6 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
   var temperoryCredsBody;
   var callbackUrlResponseBody;
   bool _showLoading = false;
+  Dio dio = new Dio();
 
   bool IsMobilephone() {
     var shortestSide = MediaQuery.of(context).size.shortestSide;
@@ -92,9 +96,9 @@ class _LoginScreenState extends State<LoginScreen> {
         (temperoryCredsBody["oauth_token"] ==
             callbackUrlResponseBody["oauth_token"])) {
       print("getFinalAuthToken 2");
-      var finalTokenResponse = await http.get(
+      Response finalTokenResponse = await dio.get(
           "$BASE_URL/rick-sanchez/access-token?oauth_token=${callbackUrlResponseBody["oauth_token"]}&oauth_verifier=${callbackUrlResponseBody["oauth_verifier"]}&oauth_token_secret=${temperoryCredsBody["oauth_token_secret"]}");
-      var finalTokenResponseBody = json.decode(finalTokenResponse.body);
+      var finalTokenResponseBody = finalTokenResponse.data;
 
       if (finalTokenResponseBody["final_credentials"]["token"] != null &&
           finalTokenResponseBody["final_credentials"]["tokenSecret"] != null) {
@@ -116,17 +120,12 @@ class _LoginScreenState extends State<LoginScreen> {
   void waitForCallbackurlResponse() async {
     print("waitForCallbackurlResponse 1");
     final callbackUrlResponse =
-        await http.get("$BASE_URL/rick-sanchez/twitter/callback_url/response");
+        await dio.get("$BASE_URL/rick-sanchez/twitter/callback_url/response");
     print("waitForCallbackurlResponse 2");
-    if (callbackUrlResponse.statusCode == 200) {
+    if (callbackUrlResponse.statusCode == 200 && (callbackUrlResponse.data["oauth_token"]==temperoryCredsBody["oauth_token"])) {
       timer?.cancel();
-      callbackUrlResponseBody = json.decode(callbackUrlResponse.body);
-      print("callbackUrlResponse response is $callbackUrlResponseBody");
+      callbackUrlResponseBody = callbackUrlResponse.data;
 
-      print("all - ${temperoryCredsBody["oauth_token"]}");
-      print("all - ${temperoryCredsBody["oauth_token_secret"]}");
-      print("all - ${callbackUrlResponseBody["oauth_token"]}");
-      print("all - ${callbackUrlResponseBody["oauth_verifier"]}");
       if (temperoryCredsBody != null &&
           callbackUrlResponseBody != null &&
           temperoryCredsBody["oauth_token"] != null &&
@@ -144,12 +143,16 @@ class _LoginScreenState extends State<LoginScreen> {
   // Step 1: POST oauth/request_token
   void getRequestTokenAndTokenSecret() async {
     print("getRequestTokenAndTokenSecret1");
-    final temperoryCreds =
-        await http.get("$BASE_URL/rick-sanchez/oauthverifier");
 
-    print("getRequestTokenAndTokenSecret2");
+    setState(() {
+      _showLoading = true;
+    });
+    final temperoryCreds =
+        await dio.get("$BASE_URL/rick-sanchez/oauthverifier");
+
+    print("getRequestTokenAndTokenSecret2 ${temperoryCreds.data}");
     if (temperoryCreds.statusCode == 200) {
-      temperoryCredsBody = json.decode(temperoryCreds.body);
+      temperoryCredsBody = temperoryCreds.data;
       String urlToLaunch =
           "https://api.twitter.com/oauth/authorize?oauth_token=${temperoryCredsBody["oauth_token"]}";
 
@@ -162,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // );
       _launchURL(urlToLaunch);
       timer = Timer.periodic(
-          Duration(seconds: 5), (Timer t) => waitForCallbackurlResponse());
+          Duration(seconds: 8), (Timer t) => waitForCallbackurlResponse());
 
       //  }
     } else {
@@ -211,56 +214,50 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _getDesktopView() {
-    return Flexible(
+    return Container(
+      decoration: BoxDecoration(
+          image: DecorationImage(
+        image: NetworkImage("https://www.ubackground.com/_ph/86/869464123.jpg"),
+        fit: BoxFit.cover,
+      )),
       child: Container(
+        height: double.infinity,
+        width: double.infinity,
         decoration: BoxDecoration(
-            image: DecorationImage(
-          image:
-              NetworkImage("https://www.ubackground.com/_ph/86/869464123.jpg"),
-          fit: BoxFit.cover,
-        )),
-        child: Container(
-          height: double.infinity,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black38.withOpacity(0.5),
-                  Colors.black87.withOpacity(0.5)
-                ]),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Text(""),
-                SizedBox(height: 20),
-                _showLoading
-                    ? CircularProgressIndicator(
-                        backgroundColor: Colors.cyan,
-                        strokeWidth: 5,
-                      )
-                    : RaisedButton.icon(
-                        color: Colors.blue.shade700,
-                        onPressed: () {
-                          setState(() {
-                            _showLoading = true;
-                          });
-                          getRequestTokenAndTokenSecret();
-                        },
-                        icon: Icon(
-                          Icons.email,
-                          color: Colors.white,
-                        ),
-                        label: Text(
-                          "Authenticate",
-                          style: TextStyle(color: Colors.white),
-                        )),
-                SizedBox(height: 20)
-              ],
-            ),
+          gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black38.withOpacity(0.5),
+                Colors.black87.withOpacity(0.5)
+              ]),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text(""),
+              SizedBox(height: 20),
+              _showLoading
+                  ? CircularProgressIndicator(
+                      backgroundColor: Colors.cyan,
+                      strokeWidth: 5,
+                    )
+                  : RaisedButton.icon(
+                      color: Colors.blue.shade700,
+                      onPressed: () {
+                        getRequestTokenAndTokenSecret();
+                      },
+                      icon: Icon(
+                        Icons.email,
+                        color: Colors.white,
+                      ),
+                      label: Text(
+                        "Authenticate",
+                        style: TextStyle(color: Colors.white),
+                      )),
+              SizedBox(height: 20)
+            ],
           ),
         ),
       ),

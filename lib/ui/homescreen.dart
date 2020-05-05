@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'dart:html';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart';
 import 'package:rick_sanchez_bot/models/Tweet.dart';
 import 'package:rick_sanchez_bot/utils/AppConstants.dart';
 import 'package:rick_sanchez_bot/utils/DateUtils.dart';
-import 'package:http/http.dart' as http;
 import 'package:rick_sanchez_bot/main.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
@@ -16,6 +16,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+
+  Dio dio = new Dio();
   var _selectedMenu = 0;
   int _charCount = 0;
   TextEditingController _textFieldController = TextEditingController();
@@ -97,11 +99,11 @@ class _HomeScreenState extends State<HomeScreen> {
 // }
 
   _getUserDetails() async {
-    var userDetailsResponse = await http.get(
+    var userDetailsResponse = await dio.get(
         "$BASE_URL/user/details?token=${window.localStorage['token']}&tokenSecret=${window.localStorage['tokenSecret']}");
     if (userDetailsResponse.statusCode == 200) {
       setState(() {
-        userDetailsBody = json.decode(userDetailsResponse.body);
+        userDetailsBody = userDetailsResponse.data;
         _getUserFutureTweets();
       });
     } else {
@@ -115,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _showListLoading = true;
       tweets.clear();
     });
-    var userTweetsResponse = await http
+    var userTweetsResponse = await dio
         .get("$BASE_URL/future-tweets?userId=${userDetailsBody["id_str"]}");
     print("getUserTweets status ${userTweetsResponse.statusCode}");
 
@@ -124,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     if (userTweetsResponse.statusCode == 200) {
-      final userTweetsBody = json.decode(userTweetsResponse.body);
+      final userTweetsBody = userTweetsResponse.data;
       print("getUserTweets bodyyy ${userTweetsBody["data"]}");
       setState(() {
         for (Map i in userTweetsBody["data"]) {
@@ -143,18 +145,15 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _showLoading = true;
     });
-    var response = await http.post(
+    var response = await dio.post(
       '$BASE_URL/schedule-tweet',
-      headers: <String, String>{
-        'Content-Type': 'application/json; charset=UTF-8',
-      },
-      body: jsonEncode(<String, String>{
+      data: {
         'date': "$_selectedDateValue $_selectedTimeValue",
         'tweetMessage': '${_textFieldController.text.toString()}',
         'token': '${window.localStorage['token']}',
         'tokenSecret': '${window.localStorage['tokenSecret']}',
         'userId': '${userDetailsBody["id_str"]}'
-      }),
+      },
     );
 
     setState(() {
@@ -166,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _successToast("Tweet Scheduled Successfully!");
       _getUserFutureTweets();
     } else if (response.statusCode == 400) {
-      var body = json.decode(response.body);
+      var body = response.data;
       if (body["message"] != null) {
         _errorToast(body["message"]);
       } else {
@@ -181,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _showListLoading = true;
     });
-    var response = await http.patch(
+    var response = await dio.patch(
         "$BASE_URL/update-status?id=${id}&userId=${userDetailsBody["id_str"]}");
 
     if (response.statusCode == 200) {
