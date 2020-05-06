@@ -1,35 +1,22 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:html';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:responsive_builder/responsive_builder.dart';
 import 'package:rick_sanchez_bot/ui/homescreen.dart';
 import 'package:rick_sanchez_bot/utils/AppConstants.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 void main() {
-  // Set default home.
-  Widget _defaultHome = new LoginScreen();
-  // Widget _defaultHome = new HomeScreen();
-  if ((window.localStorage.containsKey("token") &&
-          window.localStorage.containsKey("tokenSecret")) &&
-      (window.localStorage['token'] != null &&
-          window.localStorage['tokenSecret'] != null) &&
-      (window.localStorage['token'].length > 5 &&
-          window.localStorage['tokenSecret'].length > 5)) {
-    print(
-        "it is ${window.localStorage['tokenSecret']} && ${window.localStorage['tokenSecret'] == null}");
-    _defaultHome = new HomeScreen();
-  }
   runApp(new MaterialApp(
     debugShowCheckedModeBanner: false,
-    title: 'Rick Sanchez Bitch!',
+    title: 'Rick Bot',
     theme: ThemeData(
+      fontFamily: "Montserrat",
       primarySwatch: Colors.blue,
       visualDensity: VisualDensity.adaptivePlatformDensity,
     ),
-    home: _defaultHome,
+    home: LoginScreen(),
   ));
 }
 
@@ -42,29 +29,12 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
   Timer timer;
   var temperoryCredsBody;
   var callbackUrlResponseBody;
-  bool _showLoading = false;
+  bool _showLoading = true;
   Dio dio = new Dio();
-
-  bool IsMobilephone() {
-    var shortestSide = MediaQuery.of(context).size.shortestSide;
-    var useMobileLayout = shortestSide < 600;
-    return useMobileLayout;
-  }
-
-  // void _loginCompletedInit() {
-  //   print("_loginCompletedInit");
-  //   SchedulerBinding.instance.addPostFrameCallback((_) {
-  //     Navigator.push(
-  //       context,
-  //       MaterialPageRoute(
-  //         builder: (context) => HomeScreen(),
-  //       ),
-  //     );
-  //   });
-  // }
 
   void _loginCompleted() {
     print("_loginCompleted");
@@ -102,11 +72,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (finalTokenResponseBody["final_credentials"]["token"] != null &&
           finalTokenResponseBody["final_credentials"]["tokenSecret"] != null) {
-        window.localStorage['token'] =
-            finalTokenResponseBody["final_credentials"]["token"];
-        window.localStorage['tokenSecret'] =
-            finalTokenResponseBody["final_credentials"]["tokenSecret"];
-        _loginCompleted();
+        _prefs.then((SharedPreferences prefs) {
+          prefs.setString(
+              'token', finalTokenResponseBody["final_credentials"]["token"]);
+          prefs.setString('tokenSecret',
+              finalTokenResponseBody["final_credentials"]["tokenSecret"]);
+          _loginCompleted();
+        });
       }
       setState(() {
         _showLoading = false;
@@ -122,7 +94,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final callbackUrlResponse =
         await dio.get("$BASE_URL/rick-sanchez/twitter/callback_url/response");
     print("waitForCallbackurlResponse 2");
-    if (callbackUrlResponse.statusCode == 200 && (callbackUrlResponse.data["oauth_token"]==temperoryCredsBody["oauth_token"])) {
+    if (callbackUrlResponse.statusCode == 200 &&
+        (callbackUrlResponse.data["oauth_token"] ==
+            temperoryCredsBody["oauth_token"])) {
       timer?.cancel();
       callbackUrlResponseBody = callbackUrlResponse.data;
 
@@ -178,16 +152,26 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // @override
-  // void initState() {
-  //   super.initState();
-  // if (window.localStorage.containsKey("token") &&
-  //     window.localStorage.containsKey("tokenSecret") &&
-  //     window.localStorage['token'] != null &&
-  //     window.localStorage['tokenSecret'] != null) {
-  //   _loginCompletedInit();
-  // }
-  // }
+  @override
+  void initState() {
+    super.initState();
+    _prefs.then((SharedPreferences prefs) {
+      if ((prefs.containsKey("token") && prefs.containsKey("tokenSecret")) &&
+          (prefs.getString('token') != null &&
+              prefs.getString('tokenSecret') != null) &&
+          (prefs.getString('token').length > 5 &&
+              prefs.getString('tokenSecret').length > 5)) {
+        setState(() {
+          _showLoading = false;
+        });
+        _loginCompleted();
+      } else {
+        setState(() {
+          _showLoading = false;
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -217,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Container(
       decoration: BoxDecoration(
           image: DecorationImage(
-        image: NetworkImage("https://www.ubackground.com/_ph/86/869464123.jpg"),
+        image: AssetImage("images/rickbg.jpg"),
         fit: BoxFit.cover,
       )),
       child: Container(
