@@ -1,11 +1,12 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:responsive_builder/responsive_builder.dart';
+import 'package:rick_sanchez_bot/main.dart';
 import 'package:rick_sanchez_bot/models/Tweet.dart';
 import 'package:rick_sanchez_bot/ui/mobile/addtweet.dart';
 import 'package:rick_sanchez_bot/utils/AppConstants.dart';
 import 'package:rick_sanchez_bot/utils/DateUtils.dart';
-import 'package:rick_sanchez_bot/main.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  BuildContext context;
   Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
   Dio dio = new Dio();
   var _selectedMenu = 0;
@@ -29,6 +31,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showLoading = false;
   List<Tweet> tweets = [];
   bool _showListLoading = false;
+  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
+      new GlobalKey<RefreshIndicatorState>();
 
   _onChanged(String value) {
     setState(() {
@@ -36,15 +40,30 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  bool _logout() {
+  _logout() {
     _prefs.then((SharedPreferences prefs) async {
       if (prefs.containsKey("token") && prefs.containsKey("tokenSecret")) {
         prefs.setString('token', null);
         prefs.setString('tokenSecret', null);
+        // Navigator.push(
+        //   context,
+        //   MaterialPageRoute(
+        //     builder: (context) => LoginScreen(),
+        //   ),
+        // );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => LoginScreen(),
+          ),
+        );
         return true;
       } else {
         return false;
       }
+    }).catchError(() {
+      _errorToast("Error Logging Out...");
+      return false;
     });
   }
 
@@ -98,10 +117,11 @@ class _HomeScreenState extends State<HomeScreen> {
 // 	"userId":"2476831514"
 // }
 
-  _getUserDetails() async {
+  Future<Null> _getUserDetails() async {
     _prefs.then((SharedPreferences prefs) async {
       var userDetailsResponse = await dio.get(
           "$BASE_URL/user/details?token=${prefs.getString('token')}&tokenSecret=${prefs.getString('tokenSecret')}");
+
       if (userDetailsResponse.statusCode == 200) {
         setState(() {
           userDetailsBody = userDetailsResponse.data;
@@ -111,6 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _errorToast("Error getting user details");
         _logout();
       }
+      return;
     });
   }
 
@@ -145,41 +166,53 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   _postTweet() async {
+    Response response;
+
     setState(() {
       _showLoading = true;
     });
 
-    _prefs.then((SharedPreferences prefs) async {
-      var response = await dio.post(
+    print("selected date $_selectedDateValue $_selectedTimeValue");
+
+    try {
+      var _prefs = await SharedPreferences.getInstance();
+
+      response = await dio.post(
         '$BASE_URL/schedule-tweet',
-        data: {
+        options: Options(contentType: Headers.jsonContentType),
+        data: jsonEncode(<String, String>{
           'date': "$_selectedDateValue $_selectedTimeValue",
           'tweetMessage': '${_textFieldController.text.toString()}',
-          'token': '${prefs.getString('token')}',
-          'tokenSecret': '${prefs.getString('tokenSecret')}',
+          'token': '${_prefs.getString('token')}',
+          'tokenSecret': '${_prefs.getString('tokenSecret')}',
           'userId': '${userDetailsBody["id_str"]}'
-        },
+        }),
       );
 
       setState(() {
         _showLoading = false;
       });
+      print("resp body " + response.data.toString());
 
       if (response.statusCode == 200) {
         _textFieldController.text = "";
         _successToast("Tweet Scheduled Successfully!");
         _getUserFutureTweets();
-      } else if (response.statusCode == 400) {
+      } else {
         var body = response.data;
         if (body["message"] != null) {
           _errorToast(body["message"]);
         } else {
           _errorToast("Error Scheduling tweet");
         }
-      } else {
-        _errorToast("Error Scheduling tweet");
       }
-    });
+    } catch (e) {
+      print("err is $e");
+      setState(() {
+        _showLoading = false;
+      });
+      _errorToast("Error Scheduling tweet");
+    }
   }
 
   _updateStatus(id) async {
@@ -187,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _showListLoading = true;
     });
     var response = await dio.patch(
-        "$BASE_URL/update-status?id=${id}&userId=${userDetailsBody["id_str"]}");
+        "$BASE_URL/update-status?id=$id&userId=${userDetailsBody["id_str"]}");
 
     if (response.statusCode == 200) {
       setState(() {
@@ -250,16 +283,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             new FlatButton(
               child: new Text("Yes"),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                if (_logout()) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => LoginScreen(),
-                    ),
-                  );
-                }
+                _logout();
               },
             )
           ],
@@ -306,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _getUserDetails();
   }
 
-  _validatePostMessage() {
+  bool _validatePostMessage() {
     if (_charCount == 0) {
       _errorToast("Tweet message can't be empty.");
       return false;
@@ -327,64 +353,51 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ScreenTypeLayout(
-      mobile: _mobileHome(),
-      desktop: _desktopHome(),
-    );
-  }
-
-  Widget _mobileHome() {
+    this.context = context;
     return Scaffold(
-      drawer: _mobileNav(),
-      appBar: AppBar(
-        centerTitle: false,
-        title: Text("Home"),
-      ),
-      floatingActionButton: FloatingActionButton(
-        child: Icon(Icons.add),
-        onPressed: () async {
-          var isAddedNewTweet = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  AddTweet(userId: userDetailsBody["id_str"].toString()),
-            ),
-          );
-          if (isAddedNewTweet != null && isAddedNewTweet == true) {
-            _getUserFutureTweets();
-          }
-        },
-      ),
-      body: WillPopScope(
-        onWillPop: () async {
-          return false;
-        },
-        child: _screenOneForMobile(context),
-      ),
-    );
+        appBar: AppBar(
+          centerTitle: false,
+          title: Text("Home"),
+        ),
+        drawer: ScreenTypeLayout(mobile: _mobileNav(), desktop: Center()),
+        floatingActionButton: ScreenTypeLayout(
+          mobile: FloatingActionButton(
+            child: Icon(Icons.add),
+            onPressed: () async {
+              var isAddedNewTweet = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      AddTweet(userId: userDetailsBody["id_str"].toString()),
+                ),
+              );
+              if (isAddedNewTweet != null && isAddedNewTweet == true) {
+                _getUserFutureTweets();
+              }
+            },
+          ),
+          desktop: Center(),
+        ),
+        body: ScreenTypeLayout(
+          mobile: _screenOneForMobile(context),
+          desktop: _desktopHome(),
+        ));
   }
 
   Widget _desktopHome() {
-    return Scaffold(
-      body: WillPopScope(
-        onWillPop: () async {
-          return false;
-        },
-        child: Column(
-          children: <Widget>[
-            _desktopNav(context),
-            Flexible(
-              flex: 1,
-              child: Row(
-                children: <Widget>[
-                  _screenOneForDesktop(context),
-                  _screenTwoForDesktop(context)
-                ],
-              ),
-            ),
-          ],
+    return Column(
+      children: <Widget>[
+        _desktopNav(context),
+        Flexible(
+          flex: 1,
+          child: Row(
+            children: <Widget>[
+              _screenOneForDesktop(context),
+              _screenTwoForDesktop(context)
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -397,8 +410,7 @@ class _HomeScreenState extends State<HomeScreen> {
           DrawerHeader(
             child: Text(
               'Rick Bot',
-              style: TextStyle(
-                  fontSize: 30,color: Colors.white),
+              style: TextStyle(fontSize: 30, color: Colors.white),
             ),
             decoration: BoxDecoration(
               color: Colors.blue,
@@ -784,132 +796,146 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   _screenOneForMobile(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(children: [
-        Stack(children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                    Colors.blue,
-                    Colors.blue.shade800,
-                    Colors.blue.shade600,
-                    Colors.blue.shade400,
-                    Colors.blue.shade200
-                  ])),
-              height: 160,
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
-              Container(
-                  width: 80,
-                  height: 80,
-                  decoration: new BoxDecoration(
-                      shape: BoxShape.circle,
-                      image: new DecorationImage(
-                          fit: BoxFit.fill,
-                          image: (userDetailsBody == null)
-                              ? NetworkImage(
-                                  "https://p.kindpng.com/picc/s/220-2201160_line-clipart-computer-icons-social-media-facebook-small.png")
-                              : new NetworkImage(
-                                  userDetailsBody["profile_image_url"])))),
-              SizedBox(
-                width: 20,
-              ),
-              Expanded(
-                child: Column(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      Text(
-                        (userDetailsBody == null)
-                            ? "User Name"
-                            :"Hello, ${userDetailsBody["name"]}",
-                        textAlign: TextAlign.left,
-                        style: TextStyle(
-                            fontSize: 25,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                          (userDetailsBody == null)
-                              ? "User Bio"
-                              : userDetailsBody["description"],
-                          textAlign: TextAlign.left,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.white,
-                          ))
-                    ]),
-              )
-            ]),
-          )
-        ]),
-        SizedBox(height: 10),
-        Text(
-          "Future Tweets",
-          style: TextStyle(fontSize: 20, color: Colors.blue),
-        ),
-        SizedBox(height: 10),
-        _showListLoading
-            ? CircularProgressIndicator(
-                backgroundColor: Colors.cyan,
-                strokeWidth: 5,
-              )
-            : (tweets.length > 0)
-                ? Container(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: tweets.length,
-                      itemBuilder: (context, index) {
-                        return Column(
-                          children: <Widget>[
-                            ListTile(
-                              title: Container(
-                                child: Row(
-                                  children: <Widget>[
-                                    Expanded(
-                                        child:
-                                            Text(tweets[index].tweetMessage)),
-                                  ],
+    return RefreshIndicator(
+      key: _refreshIndicatorKey,
+      onRefresh: () {
+        _getUserDetails();
+        return;
+      },
+      child: ListView(
+        children: <Widget>[
+          SingleChildScrollView(
+            child: Column(children: [
+              Stack(children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [
+                          Colors.blue,
+                          Colors.blue.shade800,
+                          Colors.blue.shade600,
+                          Colors.blue.shade400,
+                          Colors.blue.shade200
+                        ])),
+                    height: 160,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        Container(
+                            width: 80,
+                            height: 80,
+                            decoration: new BoxDecoration(
+                                shape: BoxShape.circle,
+                                image: new DecorationImage(
+                                    fit: BoxFit.fill,
+                                    image: (userDetailsBody == null)
+                                        ? NetworkImage(
+                                            "https://p.kindpng.com/picc/s/220-2201160_line-clipart-computer-icons-social-media-facebook-small.png")
+                                        : new NetworkImage(userDetailsBody[
+                                            "profile_image_url"])))),
+                        SizedBox(
+                          width: 20,
+                        ),
+                        Expanded(
+                          child: Column(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                Text(
+                                  (userDetailsBody == null)
+                                      ? "User Name"
+                                      : "Hello, ${userDetailsBody["name"]}",
+                                  textAlign: TextAlign.left,
+                                  style: TextStyle(
+                                      fontSize: 25,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold),
                                 ),
-                              ),
-                              subtitle: Text(tweets[index].dateStr),
-                              trailing: tweets[index].cancelled
-                                  ? Container(
-                                      padding:
-                                          EdgeInsets.only(left: 4, right: 4),
-                                      decoration:
-                                          new BoxDecoration(color: Colors.red),
-                                      child: Text("CANCELLED",
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                          )),
-                                    )
-                                  : IconButton(
-                                      icon: Icon(Icons.cancel),
-                                      onPressed: () {
-                                        _showDialog(tweets[index].id);
-                                      }),
-                            ),
-                            Divider(
-                              color: Colors.grey,
-                            )
-                          ],
-                        );
-                      },
-                    ),
-                  )
-                : Text(
-                    "It's Empty.\nYour scheduled tweets will appear here.",
-                    style: TextStyle(fontSize: 16, color: Colors.blue.shade900),
-                  )
-      ]),
+                                Text(
+                                    (userDetailsBody == null)
+                                        ? "User Bio"
+                                        : userDetailsBody["description"],
+                                    textAlign: TextAlign.left,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      color: Colors.white,
+                                    ))
+                              ]),
+                        )
+                      ]),
+                )
+              ]),
+              SizedBox(height: 10),
+              Text(
+                "Future Tweets",
+                style: TextStyle(fontSize: 20, color: Colors.blue),
+              ),
+              SizedBox(height: 10),
+              _showListLoading
+                  ? CircularProgressIndicator(
+                      backgroundColor: Colors.cyan,
+                      strokeWidth: 5,
+                    )
+                  : (tweets.length > 0)
+                      ? Container(
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: tweets.length,
+                            itemBuilder: (context, index) {
+                              return Column(
+                                children: <Widget>[
+                                  ListTile(
+                                    title: Container(
+                                      child: Row(
+                                        children: <Widget>[
+                                          Expanded(
+                                              child: Text(
+                                                  tweets[index].tweetMessage)),
+                                        ],
+                                      ),
+                                    ),
+                                    subtitle: Text(tweets[index].dateStr),
+                                    trailing: tweets[index].cancelled
+                                        ? Container(
+                                            padding: EdgeInsets.only(
+                                                left: 4, right: 4),
+                                            decoration: new BoxDecoration(
+                                                color: Colors.red),
+                                            child: Text("CANCELLED",
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                )),
+                                          )
+                                        : IconButton(
+                                            icon: Icon(Icons.cancel),
+                                            onPressed: () {
+                                              _showDialog(tweets[index].id);
+                                            }),
+                                  ),
+                                  Divider(
+                                    color: Colors.grey,
+                                  )
+                                ],
+                              );
+                            },
+                          ),
+                        )
+                      : Text(
+                          "It's Empty.\nYour scheduled tweets will appear here.",
+                          style: TextStyle(
+                              fontSize: 16, color: Colors.blue.shade900),
+                        )
+            ]),
+          ),
+        ],
+      ),
     );
   }
 }

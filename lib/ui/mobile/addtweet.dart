@@ -134,7 +134,7 @@ class _AddTweetState extends State<AddTweet> {
         _textFieldController.text = "";
         _successToast("Tweet Scheduled Successfully!");
         Navigator.of(context).pop(true);
-      } else if (response.statusCode == 400) {
+      } else if (response.statusCode == 201) {
         var body = response.data;
         if (body["message"] != null) {
           _errorToast(body["message"]);

@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:responsive_builder/responsive_builder.dart';
 import 'package:rick_sanchez_bot/ui/homescreen.dart';
 import 'package:rick_sanchez_bot/utils/AppConstants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_webview_plugin/flutter_webview_plugin.dart';
+
 
 void main() {
   runApp(new MaterialApp(
@@ -35,10 +38,33 @@ class _LoginScreenState extends State<LoginScreen> {
   var callbackUrlResponseBody;
   bool _showLoading = true;
   Dio dio = new Dio();
+  final flutterWebviewPlugin = new FlutterWebviewPlugin();
+
+  _successToast(String message) {
+    Fluttertoast.showToast(
+        msg: message,
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
+        timeInSecForIosWeb: 1,
+        backgroundColor: Colors.green,
+        textColor: Colors.white,
+        fontSize: 16.0);
+  }
+
+  _errorToast(String message) {
+    Fluttertoast.showToast(
+        msg: message,
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
+        timeInSecForIosWeb: 1,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+        fontSize: 16.0);
+  }
 
   void _loginCompleted() {
     print("_loginCompleted");
-    Navigator.push(
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (context) => HomeScreen(),
@@ -51,6 +77,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (await canLaunch(url)) {
       await launch(url);
     } else {
+      _errorToast("Could not launch url.");
       throw 'Could not launch $url';
     }
   }
@@ -77,6 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
               'token', finalTokenResponseBody["final_credentials"]["token"]);
           prefs.setString('tokenSecret',
               finalTokenResponseBody["final_credentials"]["tokenSecret"]);
+          _successToast("Login Successful");
           _loginCompleted();
         });
       }
@@ -185,14 +213,9 @@ class _LoginScreenState extends State<LoginScreen> {
       appBar: AppBar(
         title: Text('Rick Sanchez (Twitter Bot)'),
       ),
-      body: WillPopScope(
-        onWillPop: () async {
-          return false;
-        },
-        child: ScreenTypeLayout(
-          desktop: _getDesktopView(),
-          mobile: _getDesktopView(),
-        ),
+      body: ScreenTypeLayout(
+        desktop: _getDesktopView(),
+        mobile: _getDesktopView(),
       ),
     );
   }
@@ -201,7 +224,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Container(
       decoration: BoxDecoration(
           image: DecorationImage(
-        image: AssetImage("images/rickbg.jpg"),
+        image: AssetImage("images/rickbg_opt.jpg"),
         fit: BoxFit.cover,
       )),
       child: Container(
@@ -246,6 +269,5 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
-    ;
   }
 }
